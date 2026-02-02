@@ -60,4 +60,4 @@ apps:
 
 ## License
 
-MIT
+[MIT](LICENSE.MD)

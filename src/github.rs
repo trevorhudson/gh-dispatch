@@ -6,14 +6,18 @@
 //! - Dispatching workflows
 //! - Polling workflow run status
 
-use anyhow::{bail, Context, Result};
-use base64::{engine::general_purpose, Engine as _};
+use anyhow::{Context, Result, bail};
+use base64::{Engine as _, engine::general_purpose};
 use indexmap::IndexMap;
-use octocrab::models::workflows::Run;
 use octocrab::Octocrab;
+use octocrab::models::workflows::Run;
 use serde::Deserialize;
 use serde_yaml::Value;
 use std::time::Duration;
+
+const POLL_DELAY: u64 = 2;
+const POLL_INTERVAL: u64 = 10; // seconds
+const MAX_WAIT: u64 = 30 * 60; // 30 minutes
 
 // -----------------------------------------------------------------------------
 // Types
@@ -185,7 +189,7 @@ pub async fn dispatch_workflow(
         .inputs(inputs)
         .send()
         .await
-        .context(format!("Failed to dispatch workflow: {}", workflow))?;
+        .with_context(|| format!("Failed to dispatch workflow: {}", workflow))?;
 
     Ok(())
 }
@@ -206,7 +210,7 @@ pub async fn get_latest_run(
     git_ref: &str,
 ) -> Result<Run> {
     // Brief delay to let GitHub register the run
-    tokio::time::sleep(Duration::from_secs(2)).await;
+    tokio::time::sleep(Duration::from_secs(POLL_DELAY)).await;
 
     let runs = client
         .workflows(owner, repo)
@@ -227,13 +231,20 @@ pub async fn get_latest_run(
 /// Poll a workflow run until it completes.
 ///
 /// Checks run status every 10 seconds until it reaches "completed".
+/// Times out after 30 minutes to prevent infinite loops.
 pub async fn wait_for_completion(
     client: &Octocrab,
     owner: &str,
     repo: &str,
     run_id: u64,
 ) -> Result<Run> {
+    let start = std::time::Instant::now();
+
     loop {
+        if start.elapsed() > Duration::from_secs(MAX_WAIT) {
+            bail!("Timeout waiting for workflow completion (30 minutes)");
+        }
+
         let run = client
             .workflows(owner, repo)
             .get(run_id.into())
@@ -243,7 +254,7 @@ pub async fn wait_for_completion(
         match run.status.as_str() {
             "completed" => return Ok(run),
             "queued" | "in_progress" | "waiting" | "pending" => {
-                tokio::time::sleep(Duration::from_secs(10)).await;
+                tokio::time::sleep(Duration::from_secs(POLL_INTERVAL)).await;
             }
             status => bail!("Unexpected workflow status: {}", status),
         }

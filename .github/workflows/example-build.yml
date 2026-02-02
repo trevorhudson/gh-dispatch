@@ -1,0 +1,28 @@
+# Example 'build' workflow for testing
+name: Build Application
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: "Application to build"
+        required: true
+        type: choice
+        options:
+          - app-01
+          - app-02
+          - app-03
+      tag:
+        description: "Tag, branch, or commit SHA to build from"
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Build
+        run: |
+          echo "Building ${{ inputs.app }}"
+          echo "Using image tag: ${{ inputs.tag }}"
+          # Your actual deployment logic here

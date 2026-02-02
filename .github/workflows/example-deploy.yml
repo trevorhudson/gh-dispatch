@@ -1,0 +1,39 @@
+# Example 'deploy' workflow for testing
+name: Deploy Application
+
+on:
+  workflow_dispatch:
+    inputs:
+      app:
+        description: "Application to deploy"
+        required: true
+        type: choice
+        options:
+          - app-01
+          - app-02
+          - app-03
+
+      env:
+        description: "Target environment"
+        required: true
+        type: choice
+        options:
+          - qa
+          - uat
+          - staging
+          - prod
+
+      tag:
+        description: "Image tag or SHA to deploy"
+        required: true
+        type: string
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Deploy
+        run: |
+          echo "Deploying ${{ inputs.app }} to ${{ inputs.env }}"
+          echo "Using image tag: ${{ inputs.tag }}"
+          # Your actual deployment logic here

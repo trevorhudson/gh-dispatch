@@ -8,6 +8,7 @@
 //! [apps.my-app]
 //! build = { repo = "owner/repo", workflow = "build.yml", inputs = { app = "my-app" } }
 //! deploy = { repo = "owner/repo", workflow = "deploy.yml" }
+//! test = { repo = "owner/repo", workflow = "test.yml" }
 //! ```
 
 use anyhow::{Context, Result, bail};
@@ -26,14 +27,8 @@ pub struct Config {
     pub apps: IndexMap<String, AppConfig>,
 }
 
-/// Configuration for a single application.
-#[derive(Debug, Deserialize)]
-pub struct AppConfig {
-    /// Build workflow reference
-    pub build: WorkflowRef,
-    /// Deploy workflow reference
-    pub deploy: WorkflowRef,
-}
+/// Configuration for a single application: map of workflow name to its reference.
+pub type AppConfig = IndexMap<String, WorkflowRef>;
 
 /// Reference to a GitHub Actions workflow.
 #[derive(Debug, Deserialize)]

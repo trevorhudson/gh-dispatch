@@ -1,11 +1,8 @@
 //! CLI argument parsing and types.
 //!
-//! Defines the command-line interface using clap, including
-//! the main `Args` struct and `Workflow` enum.
+//! Defines the command-line interface using clap.
 
-use clap::{Parser, ValueEnum};
-use inquire_derive::Selectable;
-use std::fmt::{Display, Formatter};
+use clap::Parser;
 
 // -----------------------------------------------------------------------------
 // Types
@@ -20,27 +17,11 @@ pub struct Args {
     /// Application name from config
     pub app: Option<String>,
 
-    /// Workflow to run
+    /// Workflow to run (e.g., build, deploy, test)
     #[arg(short, long)]
-    pub workflow: Option<Workflow>,
+    pub workflow: Option<String>,
 
     /// Don't wait for workflow to complete
     #[arg(long)]
     pub no_wait: bool,
-}
-
-/// Workflow type to dispatch.
-#[derive(Debug, Copy, Clone, Selectable, ValueEnum)]
-pub enum Workflow {
-    Build,
-    Deploy,
-}
-
-impl Display for Workflow {
-    fn fmt(&self, f: &mut Formatter<'_>) -> std::fmt::Result {
-        match self {
-            Workflow::Build => write!(f, "Build"),
-            Workflow::Deploy => write!(f, "Deploy"),
-        }
-    }
 }

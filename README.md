@@ -40,7 +40,8 @@ Create `config.toml` in the current directory or `~/.config/gh-dispatch/config.t
 ```toml
 [apps.my-app]
 build = { repo = "owner/repo", workflow = "build.yml", inputs = { app = "my-app" } }
-deploy = { repo = "owner/repo", workflow = "deploy.yml" }
+deploy = { repo = "owner/repo", workflow = "deploy.yml"m inputs = { app = "my-app", tag = "v1.0" } }
+test = { repo = "owner/repo", workflow = "test.yml" }
 
 [apps.another-app]
 build = { repo = "owner/other-repo", workflow = "ci.yml" }

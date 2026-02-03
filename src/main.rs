@@ -6,7 +6,7 @@ mod ui;
 
 use anyhow::{Result, bail};
 use clap::Parser;
-use cli::{Args, Workflow};
+use cli::Args;
 use colored::Colorize;
 use config::load_config;
 use github::{
@@ -41,15 +41,18 @@ async fn main() -> Result<()> {
 
     // Get workflow from arg or prompt
     let selected_workflow = if let Some(wf) = &cli.workflow {
-        *wf
+        if !app.contains_key(wf) {
+            bail!("Workflow '{}' not found for app '{}'", wf, selected_app);
+        }
+        wf.clone()
     } else {
-        Workflow::select("Select workflow:").prompt()?
+        let workflow_names: Vec<&String> = app.keys().collect();
+        Select::new("Select workflow:", workflow_names)
+            .prompt()?
+            .clone()
     };
 
-    let workflow_ref = match selected_workflow {
-        Workflow::Build => &app.build,
-        Workflow::Deploy => &app.deploy,
-    };
+    let workflow_ref = &app[&selected_workflow];
 
     let owner = &workflow_ref.owner;
     let repo = &workflow_ref.repo;
@@ -69,8 +72,8 @@ async fn main() -> Result<()> {
     let inputs = collect_workflow_inputs(&schema.inputs, workflow_ref.inputs.as_ref())?;
 
     println!(
-        "\n{}ing {} with inputs:",
-        selected_workflow.to_string().bold(),
+        "\nRunning '{}' for {} with inputs:",
+        selected_workflow.bold(),
         selected_app.cyan().bold()
     );
     for (key, value) in &inputs {

@@ -1,20 +1,13 @@
 //! Configuration loading and types.
 //!
-//! Loads config from `./config.yaml` or `~/.config/gh-dispatch/config.yaml`.
+//! Loads config from `./config.toml` or `~/.config/gh-dispatch/config.toml`.
 //!
-//! # Example config.yaml
+//! # Example config.toml
 //!
-//! ```yaml
-//! apps:
-//!   my-app:
-//!     build:
-//!       repo: "owner/repo"
-//!       workflow: "build.yml"
-//!       inputs:
-//!         app: "my-app"
-//!     deploy:
-//!       repo: "owner/repo"
-//!       workflow: "deploy.yml"
+//! ```toml
+//! [apps.my-app]
+//! build = { repo = "owner/repo", workflow = "build.yml", inputs = { app = "my-app" } }
+//! deploy = { repo = "owner/repo", workflow = "deploy.yml" }
 //! ```
 
 use anyhow::{Context, Result, bail};
@@ -91,16 +84,16 @@ impl TryFrom<WorkflowRefRaw> for WorkflowRef {
 /// Load configuration from disk.
 ///
 /// Searches for config in order:
-/// 1. `./config.yaml` (current directory)
-/// 2. `~/.config/gh-dispatch/config.yaml` (user config)
+/// 1. `./config.toml` (current directory)
+/// 2. `~/.config/gh-dispatch/config.toml` (user config)
 pub fn load_config() -> Result<Config> {
-    let local = PathBuf::from("./config.yaml");
+    let local = PathBuf::from("./config.toml");
     let home_config = {
         let home = std::env::var_os("HOME").context("HOME not set")?;
         PathBuf::from(home)
             .join(".config")
             .join("gh-dispatch")
-            .join("config.yaml")
+            .join("config.toml")
     };
 
     let config_path = if local.exists() {
@@ -115,8 +108,8 @@ pub fn load_config() -> Result<Config> {
         )
     };
 
-    let yaml = read_to_string(&config_path)
+    let content = read_to_string(&config_path)
         .with_context(|| format!("Failed to read {:?}", config_path))?;
 
-    serde_yaml::from_str(&yaml).context("Failed to parse config YAML")
+    toml::from_str(&content).context("Failed to parse config TOML")
 }

@@ -35,27 +35,16 @@ gh-dispatch my-app -w deploy --no-wait
 
 ## Configuration
 
-Create `config.yaml` in the current directory or `~/.config/gh-dispatch/config.yaml`:
+Create `config.toml` in the current directory or `~/.config/gh-dispatch/config.toml`:
 
-```yaml
-apps:
-  my-app:
-    build:
-      repo: "owner/repo"
-      workflow: "build.yml"
-      inputs:
-        app: "my-app"  # pre-filled, won't prompt
-    deploy:
-      repo: "owner/repo"
-      workflow: "deploy.yml"
+```toml
+[apps.my-app]
+build = { repo = "owner/repo", workflow = "build.yml", inputs = { app = "my-app" } }
+deploy = { repo = "owner/repo", workflow = "deploy.yml" }
 
-  another-app:
-    build:
-      repo: "owner/other-repo"
-      workflow: "ci.yml"
-    deploy:
-      repo: "owner/other-repo"
-      workflow: "deploy.yml"
+[apps.another-app]
+build = { repo = "owner/other-repo", workflow = "ci.yml" }
+deploy = { repo = "owner/other-repo", workflow = "deploy.yml" }
 ```
 
 ## License

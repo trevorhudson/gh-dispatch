@@ -26,6 +26,22 @@ pub fn create_spinner(message: &str) -> ProgressBar {
     spinner
 }
 
+/// Spawn a task that updates the spinner message each second with elapsed time.
+///
+/// Returns a `JoinHandle` — call `.abort()` on it when done.
+pub fn start_timer(spinner: &ProgressBar, prefix: &str) -> tokio::task::JoinHandle<()> {
+    let spinner = spinner.clone();
+    let prefix = prefix.to_string();
+    tokio::spawn(async move {
+        let start = std::time::Instant::now();
+        loop {
+            let secs = start.elapsed().as_secs();
+            spinner.set_message(format!("{prefix} ({}:{:02})", secs / 60, secs % 60));
+            tokio::time::sleep(Duration::from_secs(1)).await;
+        }
+    })
+}
+
 /// Print a success message with green checkmark.
 pub fn success(msg: &str) {
     println!("{} {}", "✓".green().bold(), msg);

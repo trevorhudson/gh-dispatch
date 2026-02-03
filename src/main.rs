@@ -15,7 +15,7 @@ use github::{
 };
 use inquire::{Confirm, Select};
 use prompts::collect_workflow_inputs;
-use ui::{create_spinner, info, success, warning};
+use ui::{create_spinner, info, start_timer, success, warning};
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -113,7 +113,9 @@ async fn main() -> Result<()> {
         println!("  {}", run.html_url.to_string().underline().blue());
 
         let spinner = create_spinner("Waiting for completion...");
+        let timer = start_timer(&spinner, "Waiting for completion");
         let completed = wait_for_completion(&client, owner, repo, run.id.into_inner()).await?;
+        timer.abort();
         spinner.finish_and_clear();
 
         let conclusion = completed.conclusion.as_deref().unwrap_or("unknown");

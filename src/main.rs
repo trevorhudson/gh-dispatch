@@ -26,7 +26,7 @@ async fn main() -> Result<()> {
     // Get app from arg or prompt
     let selected_app = if let Some(app) = &cli.app {
         if !config.apps.contains_key(app) {
-            bail!("App '{}' not found in config", app);
+            bail!("App '{app}' not found in config");
         }
         app.as_str()
     } else {
@@ -42,7 +42,7 @@ async fn main() -> Result<()> {
     // Get workflow from arg or prompt
     let selected_workflow = if let Some(wf) = &cli.workflow {
         if !app.contains_key(wf) {
-            bail!("Workflow '{}' not found for app '{}'", wf, selected_app);
+            bail!("Workflow '{wf}' not found for app '{selected_app}'");
         }
         wf.clone()
     } else {
@@ -101,7 +101,9 @@ async fn main() -> Result<()> {
     spinner.finish_and_clear();
 
     // Wait for completion if requested
-    if !cli.no_wait {
+    if cli.no_wait {
+        success("Workflow dispatched (not waiting for completion)");
+    } else {
         success("Workflow dispatched");
         let spinner = create_spinner("Finding workflow run...");
         let run = get_latest_run(&client, owner, repo, &workflow_ref.workflow, &git_ref).await?;
@@ -121,10 +123,8 @@ async fn main() -> Result<()> {
                 bail!("Workflow failed");
             }
             "cancelled" => warning("Workflow was cancelled"),
-            other => info(&format!("Workflow finished: {}", other)),
+            other => info(&format!("Workflow finished: {other}")),
         }
-    } else {
-        success("Workflow dispatched (not waiting for completion)");
     }
 
     Ok(())

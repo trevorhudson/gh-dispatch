@@ -44,7 +44,7 @@ pub struct WorkflowRef {
     pub inputs: Option<IndexMap<String, String>>,
 }
 
-/// Raw deserialization struct for WorkflowRef.
+/// Raw deserialization struct for `WorkflowRef`.
 #[derive(Deserialize)]
 struct WorkflowRefRaw {
     repo: String,
@@ -103,8 +103,8 @@ pub fn load_config() -> Result<Config> {
         )
     };
 
-    let content = read_to_string(&config_path)
-        .with_context(|| format!("Failed to read {:?}", config_path))?;
+    let content =
+        read_to_string(&config_path).with_context(|| format!("Failed to read {config_path:?}"))?;
 
     toml::from_str(&content).context("Failed to parse config TOML")
 }

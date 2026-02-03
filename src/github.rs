@@ -27,11 +27,11 @@ const MAX_WAIT: u64 = 30 * 60; // 30 minutes
 pub struct WorkflowSchema {
     /// Display name of the workflow
     pub name: String,
-    /// Input definitions from workflow_dispatch trigger
+    /// Input definitions from `workflow_dispatch` trigger
     pub inputs: IndexMap<String, WorkflowInput>,
 }
 
-/// A single workflow input definition from workflow_dispatch.inputs.
+/// A single workflow input definition from `workflow_dispatch.inputs`.
 #[derive(Debug, Deserialize, Clone)]
 pub struct WorkflowInput {
     /// Default value if not provided
@@ -115,7 +115,7 @@ pub async fn get_workflow_schema(
     repo: &str,
     workflow: &str,
 ) -> Result<WorkflowSchema> {
-    let path = format!(".github/workflows/{}", workflow);
+    let path = format!(".github/workflows/{workflow}");
 
     let content = client
         .repos(owner, repo)
@@ -143,7 +143,7 @@ pub async fn get_workflow_schema(
     parse_workflow_schema(&yaml_content)
 }
 
-/// Parse workflow YAML and extract the workflow_dispatch inputs section.
+/// Parse workflow YAML and extract the `workflow_dispatch` inputs section.
 fn parse_workflow_schema(yaml_content: &str) -> Result<WorkflowSchema> {
     let yaml: Value =
         serde_yaml::from_str(yaml_content).context("Failed to parse workflow YAML")?;
@@ -189,7 +189,7 @@ pub async fn dispatch_workflow(
         .inputs(inputs)
         .send()
         .await
-        .with_context(|| format!("Failed to dispatch workflow: {}", workflow))?;
+        .with_context(|| format!("Failed to dispatch workflow: {workflow}"))?;
 
     Ok(())
 }
@@ -200,7 +200,7 @@ pub async fn dispatch_workflow(
 
 /// Find the most recent workflow run after dispatch.
 ///
-/// Waits briefly then queries for the latest workflow_dispatch run on the branch.
+/// Waits briefly then queries for the latest `workflow_dispatch` run on the branch.
 /// This is best-effort - in high-traffic repos, you may get someone else's run.
 pub async fn get_latest_run(
     client: &Octocrab,
@@ -256,7 +256,7 @@ pub async fn wait_for_completion(
             "queued" | "in_progress" | "waiting" | "pending" => {
                 tokio::time::sleep(Duration::from_secs(POLL_INTERVAL)).await;
             }
-            status => bail!("Unexpected workflow status: {}", status),
+            status => bail!("Unexpected workflow status: {status}"),
         }
     }
 }

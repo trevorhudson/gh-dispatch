@@ -88,7 +88,7 @@ pub async fn watch_run(
                         get_annotations(client, owner, repo, check_run_id).await?;
                     for ann in &annotations {
                         let (prefix, msg) = format_annotation(ann);
-                        let _ = multi.println(format!("{} {}", prefix, msg));
+                        let _ = multi.println(format!("{prefix} {msg}"));
                     }
                 }
             }
@@ -126,9 +126,7 @@ fn format_job_message(job: &Job) -> String {
             // Show the currently running step if available.
             job.steps
                 .as_ref()
-                .and_then(|steps| steps.iter().find(|s| s.status == "in_progress"))
-                .map(|s| format!(" → {}", s.name.dimmed()))
-                .unwrap_or_else(|| " (running)".dimmed().to_string())
+                .and_then(|steps| steps.iter().find(|s| s.status == "in_progress")).map_or_else(|| " (running)".dimmed().to_string(), |s| format!(" → {}", s.name.dimmed()))
         }
         "completed" => format_duration(job),
         _ => String::new(),

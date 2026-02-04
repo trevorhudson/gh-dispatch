@@ -52,7 +52,7 @@ pub struct WorkflowInput {
 // Job / Step Types
 // -----------------------------------------------------------------------------
 
-/// Response from GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs
+/// Response from GET /`repos/{owner}/{repo}/actions/runs/{run_id}/jobs`
 #[derive(Debug, Deserialize)]
 pub struct JobsResponse {
     pub jobs: Vec<Job>,
@@ -293,7 +293,7 @@ pub async fn get_run_jobs(
 /// Fetch annotations for a check run.
 ///
 /// These are the messages emitted by `::notice::`, `::warning::`, and `::error::`
-/// workflow commands.  Returns an empty vec when the job has no check_run_id.
+/// workflow commands.  Returns an empty vec when the job has no `check_run_id`.
 pub async fn get_annotations(
     client: &Octocrab,
     owner: &str,

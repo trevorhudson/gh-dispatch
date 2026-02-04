@@ -18,11 +18,16 @@ on:
         type: string
 
 jobs:
-  deploy:
+  build:
     runs-on: ubuntu-latest
     steps:
+      - name: Pre-build
+        run: |
+          echo "Pre-Building ${{ inputs.app }}"
       - name: Build
         run: |
           echo "Building ${{ inputs.app }}"
           echo "Using image tag: ${{ inputs.tag }}"
-          # Your actual deployment logic here
+      - name: Publish
+        run: |
+          echo "::notice title=Image tag::${{ inputs.app }}:${{ inputs.tag }}"

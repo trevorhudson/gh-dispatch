@@ -3,6 +3,7 @@ mod config;
 mod github;
 mod prompts;
 mod ui;
+mod watcher;
 
 use anyhow::{Result, bail};
 use clap::Parser;
@@ -10,12 +11,13 @@ use cli::Args;
 use colored::Colorize;
 use config::load_config;
 use github::{
-    create_client, dispatch_workflow, get_default_branch, get_latest_run, get_workflow_schema,
-    wait_for_completion,
+    create_client, dispatch_workflow, get_current_login, get_default_branch, get_latest_run,
+    get_workflow_schema,
 };
 use inquire::{Confirm, Select};
 use prompts::collect_workflow_inputs;
-use ui::{create_spinner, info, start_timer, success, warning};
+use ui::{create_spinner, info, success, warning};
+use watcher::watch_run;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -49,7 +51,7 @@ async fn main() -> Result<()> {
         let workflow_names: Vec<&String> = app.keys().collect();
         Select::new("Select workflow:", workflow_names)
             .prompt()?
-            .clone()
+            .to_string()
     };
 
     let workflow_ref = &app[&selected_workflow];
@@ -57,10 +59,18 @@ async fn main() -> Result<()> {
     let owner = &workflow_ref.owner;
     let repo = &workflow_ref.repo;
 
-    // Fetch workflow schema and default branch
+    // Fetch workflow schema + current login in parallel; resolve git ref from config or default branch
     let spinner = create_spinner("Fetching workflow...");
-    let schema = get_workflow_schema(&client, owner, repo, &workflow_ref.workflow).await?;
-    let git_ref = get_default_branch(&client, owner, repo).await?;
+    let (schema, login) = tokio::join!(
+        get_workflow_schema(&client, owner, repo, &workflow_ref.workflow),
+        get_current_login(&client),
+    );
+    let schema = schema?;
+    let login = login?;
+    let git_ref = match &workflow_ref.git_ref {
+        Some(r) => r.clone(),
+        None => get_default_branch(&client, owner, repo).await?,
+    };
     spinner.finish_and_clear();
     info(&format!(
         "Workflow: '{}' ({})",
@@ -106,17 +116,15 @@ async fn main() -> Result<()> {
     } else {
         success("Workflow dispatched");
         let spinner = create_spinner("Finding workflow run...");
-        let run = get_latest_run(&client, owner, repo, &workflow_ref.workflow, &git_ref).await?;
+        let run =
+            get_latest_run(&client, owner, repo, &workflow_ref.workflow, &git_ref, &login).await?;
         spinner.finish_and_clear();
 
         info(&format!("Run #{}", run.run_number.to_string().cyan()));
         println!("  {}", run.html_url.to_string().underline().blue());
+        println!();
 
-        let spinner = create_spinner("Waiting for completion...");
-        let timer = start_timer(&spinner, "Waiting for completion");
-        let completed = wait_for_completion(&client, owner, repo, run.id.into_inner()).await?;
-        timer.abort();
-        spinner.finish_and_clear();
+        let completed = watch_run(&client, owner, repo, run.id.into_inner()).await?;
 
         let conclusion = completed.conclusion.as_deref().unwrap_or("unknown");
         match conclusion {

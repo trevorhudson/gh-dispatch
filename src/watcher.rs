@@ -81,7 +81,7 @@ pub async fn watch_run(
                 bar.finish();
 
                 // Fetch and print annotations once per job.
-                if let Some(check_run_id) = job.check_run_id
+                if let Some(check_run_id) = job.check_run_id()
                     && annotated.insert(job.id)
                 {
                     let annotations =
@@ -100,6 +100,7 @@ pub async fn watch_run(
             for (bar, _) in job_bars.values() {
                 bar.finish();
             }
+            println!();
             return Ok(run);
         }
 

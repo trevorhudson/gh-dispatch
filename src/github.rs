@@ -62,13 +62,25 @@ pub struct JobsResponse {
 #[derive(Debug, Deserialize, Clone)]
 pub struct Job {
     pub id: u64,
-    pub check_run_id: Option<u64>,
+    /// URL like `https://api.github.com/repos/{owner}/{repo}/check-runs/{id}`.
+    /// The trailing segment is the check-run ID used to fetch annotations.
+    pub check_run_url: Option<String>,
     pub name: String,
     pub status: String,
     pub conclusion: Option<String>,
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
     pub steps: Option<Vec<Step>>,
+}
+
+impl Job {
+    /// Extract the check-run ID from `check_run_url`.
+    pub fn check_run_id(&self) -> Option<u64> {
+        self.check_run_url
+            .as_ref()
+            .and_then(|url| url.rsplit('/').next())
+            .and_then(|id| id.parse().ok())
+    }
 }
 
 /// A single step within a job.

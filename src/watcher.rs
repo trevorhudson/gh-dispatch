@@ -9,10 +9,10 @@ use colored::Colorize;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
 use octocrab::Octocrab;
 use octocrab::models::workflows::Run;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use crate::github::{get_run_jobs, Job};
+use crate::github::{get_annotations, get_run_jobs, Job};
 
 const POLL_INTERVAL: u64 = 5; // seconds
 const MAX_WAIT: u64 = 30 * 60; // 30 minutes
@@ -28,6 +28,8 @@ pub async fn watch_run(
     let multi = MultiProgress::new();
     // Per-job state: the progress bar and the last step number we already printed.
     let mut job_bars: HashMap<u64, (ProgressBar, u32)> = HashMap::new();
+    // Jobs whose annotations we have already fetched and printed.
+    let mut annotated: HashSet<u64> = HashSet::new();
     let start = std::time::Instant::now();
 
     loop {
@@ -77,6 +79,18 @@ pub async fn watch_run(
 
             if job.status == "completed" {
                 bar.finish();
+
+                // Fetch and print annotations once per job.
+                if let Some(check_run_id) = job.check_run_id
+                    && annotated.insert(job.id)
+                {
+                    let annotations =
+                        get_annotations(client, owner, repo, check_run_id).await?;
+                    for ann in &annotations {
+                        let (prefix, msg) = format_annotation(ann);
+                        let _ = multi.println(format!("{} {}", prefix, msg));
+                    }
+                }
             }
         }
 
@@ -120,6 +134,29 @@ fn format_job_message(job: &Job) -> String {
     };
 
     format!("{} {}{}", icon, job.name.bold(), status_suffix)
+}
+
+/// Format a single annotation for terminal output.
+///
+/// Returns (colored prefix, message body).  The prefix reflects the annotation
+/// level: notice (blue →), warning (yellow !), failure (red ✗).
+fn format_annotation(ann: &octocrab::params::checks::CheckRunAnnotation) -> (String, String) {
+    let level = ann.annotation_level.as_deref().unwrap_or("notice");
+    let prefix = match level {
+        "failure" => "    ✗".red().bold().to_string(),
+        "warning" => "    !".yellow().bold().to_string(),
+        _ => "    →".blue().bold().to_string(), // notice
+    };
+
+    let title = ann.title.as_deref().unwrap_or("");
+    let message = ann.message.as_deref().unwrap_or("");
+    let body = match (title.is_empty(), message.is_empty()) {
+        (false, false) => format!("{}: {}", title.bold(), message),
+        (false, true) => title.bold().to_string(),
+        _ => message.to_string(),
+    };
+
+    (prefix, body)
 }
 
 /// Format the duration a completed job took, or empty string if timestamps missing.

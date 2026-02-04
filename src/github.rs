@@ -10,6 +10,8 @@ use anyhow::{Context, Result, bail};
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
+use octocrab::models::CheckRunId;
+use octocrab::params::checks::CheckRunAnnotation;
 use octocrab::Octocrab;
 use octocrab::models::workflows::Run;
 use serde::Deserialize;
@@ -60,6 +62,7 @@ pub struct JobsResponse {
 #[derive(Debug, Deserialize, Clone)]
 pub struct Job {
     pub id: u64,
+    pub check_run_id: Option<u64>,
     pub name: String,
     pub status: String,
     pub conclusion: Option<String>,
@@ -273,4 +276,22 @@ pub async fn get_run_jobs(
         .await
         .context("Failed to fetch jobs")?;
     Ok(response.jobs)
+}
+
+/// Fetch annotations for a check run.
+///
+/// These are the messages emitted by `::notice::`, `::warning::`, and `::error::`
+/// workflow commands.  Returns an empty vec when the job has no check_run_id.
+pub async fn get_annotations(
+    client: &Octocrab,
+    owner: &str,
+    repo: &str,
+    check_run_id: u64,
+) -> Result<Vec<CheckRunAnnotation>> {
+    client
+        .checks(owner, repo)
+        .list_annotations(CheckRunId(check_run_id))
+        .send()
+        .await
+        .context("Failed to fetch annotations")
 }

@@ -2,19 +2,21 @@
 //!
 //! Polls a workflow run and renders each job as a live spinner inside an
 //! `indicatif::MultiProgress` group.  Completed steps are printed once as
-//! they finish.  The loop exits when the run reaches "completed" status.
+//! they finish.  Annotations (notices, warnings, errors) are fetched and
+//! displayed when each job completes.  The loop exits when the run reaches
+//! "completed" status.
 
 use anyhow::{Result, bail};
 use colored::Colorize;
 use indicatif::{MultiProgress, ProgressBar, ProgressStyle};
-use octocrab::Octocrab;
-use octocrab::models::workflows::Run;
+use octocrab::{Octocrab, models::workflows::Run, params::checks::CheckRunAnnotation};
+
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use octocrab::params::checks::CheckRunAnnotation;
-
-use crate::github::{Job, get_annotations, get_run_jobs};
+use crate::github::{
+    Job, JobConclusion, JobStatus, check_run_id_from_url, get_annotations, get_run_jobs,
+};
 
 const POLL_INTERVAL: u64 = 5; // seconds
 const MAX_WAIT: u64 = 30 * 60; // 30 minutes
@@ -36,7 +38,7 @@ pub async fn watch_run(client: &Octocrab, owner: &str, repo: &str, run_id: u64) 
 
         let run = client.workflows(owner, repo).get(run_id.into()).await?;
 
-        let jobs = get_run_jobs(client, owner, repo, run_id).await?;
+        let jobs = get_run_jobs(client, owner, repo, run_id.into()).await?;
 
         for job in &jobs {
             let (bar, last_step) = job_bars.entry(job.id).or_insert_with(|| {
@@ -51,31 +53,30 @@ pub async fn watch_run(client: &Octocrab, owner: &str, repo: &str, run_id: u64) 
             });
 
             // Print any newly-completed steps (only once each).
-            if let Some(steps) = &job.steps {
-                let new_steps: Vec<_> = steps
-                    .iter()
-                    .filter(|s| s.number > *last_step && s.status == "completed")
-                    .collect();
-                for step in new_steps {
-                    let icon = match step.conclusion.as_deref() {
-                        Some("success") => "  ✓".green().to_string(),
-                        Some("failure") => "  ✗".red().to_string(),
-                        Some("skipped") => "  ○".dimmed().to_string(),
-                        _ => "  ?".dimmed().to_string(),
-                    };
-                    let _ = multi.println(format!("{} {}", icon, step.name));
-                    *last_step = step.number;
-                }
+            let new_steps: Vec<_> = job
+                .steps
+                .iter()
+                .filter(|s| s.number > *last_step && s.status == JobStatus::Completed)
+                .collect();
+            for step in new_steps {
+                let icon = match &step.conclusion {
+                    Some(JobConclusion::Success) => "  ✓".green().to_string(),
+                    Some(JobConclusion::Failure) => "  ✗".red().to_string(),
+                    Some(JobConclusion::Skipped) => "  ○".dimmed().to_string(),
+                    _ => "  ?".dimmed().to_string(),
+                };
+                let _ = multi.println(format!("{} {}", icon, step.name));
+                *last_step = step.number;
             }
 
             // Update the job's spinner message.
             bar.set_message(format_job_message(job));
 
-            if job.status == "completed" {
+            if job.status == JobStatus::Completed {
                 bar.finish();
 
                 // Fetch and print annotations once per job.
-                if let Some(check_run_id) = job.check_run_id()
+                if let Some(check_run_id) = check_run_id_from_url(&job.check_run_url)
                     && annotated.insert(job.id)
                 {
                     let annotations = get_annotations(client, owner, repo, check_run_id).await?;
@@ -103,29 +104,29 @@ pub async fn watch_run(client: &Octocrab, owner: &str, repo: &str, run_id: u64) 
 
 /// Build the display message for a single job spinner.
 fn format_job_message(job: &Job) -> String {
-    let icon = match (job.status.as_str(), job.conclusion.as_deref()) {
-        ("completed", Some("success")) => "✓".green().bold().to_string(),
-        ("completed", Some("failure")) => "✗".red().bold().to_string(),
-        ("completed", Some("cancelled")) => "○".yellow().to_string(),
-        ("completed", _) => "○".dimmed().to_string(),
-        ("in_progress", _) => "●".cyan().to_string(),
+    let icon = match (&job.status, &job.conclusion) {
+        (JobStatus::Completed, Some(JobConclusion::Success)) => "✓".green().bold().to_string(),
+        (JobStatus::Completed, Some(JobConclusion::Failure)) => "✗".red().bold().to_string(),
+        (JobStatus::Completed, Some(JobConclusion::Cancelled)) => "○".yellow().to_string(),
+        (JobStatus::Completed, _) => "○".dimmed().to_string(),
+        (JobStatus::InProgress, _) => "●".cyan().to_string(),
         _ => "○".dimmed().to_string(), // queued / waiting / pending
     };
 
-    let status_suffix = match job.status.as_str() {
-        "queued" => " (queued)".dimmed().to_string(),
-        "waiting" => " (waiting)".dimmed().to_string(),
-        "in_progress" => {
+    let status_suffix = match &job.status {
+        JobStatus::Queued => " (queued)".dimmed().to_string(),
+        JobStatus::Waiting => " (waiting)".dimmed().to_string(),
+        JobStatus::InProgress => {
             // Show the currently running step if available.
             job.steps
-                .as_ref()
-                .and_then(|steps| steps.iter().find(|s| s.status == "in_progress"))
+                .iter()
+                .find(|s| s.status == JobStatus::InProgress)
                 .map_or_else(
                     || " (running)".dimmed().to_string(),
                     |s| format!(" → {}", s.name.dimmed()),
                 )
         }
-        "completed" => format_duration(job),
+        JobStatus::Completed => format_duration(job),
         _ => String::new(),
     };
 

@@ -10,10 +10,10 @@ use anyhow::{Context, Result, bail};
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
-use octocrab::models::workflows::Run;
-use octocrab::models::CheckRunId;
-use octocrab::params::checks::CheckRunAnnotation;
 use octocrab::Octocrab;
+use octocrab::models::workflows::Run;
+use octocrab::models::{CheckRunId, RunId};
+use octocrab::params::checks::CheckRunAnnotation;
 use serde::Deserialize;
 use serde_yaml::Value;
 use std::time::Duration;
@@ -58,29 +58,50 @@ pub struct JobsResponse {
     pub jobs: Vec<Job>,
 }
 
+/// Status of a job or step.  `#[serde(other)]` keeps us safe against new
+/// statuses GitHub may add in the future (e.g. "waiting" is not in
+/// octocrab's enum but is returned for concurrency-gated jobs).
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum JobStatus {
+    Queued,
+    Waiting,
+    Pending,
+    InProgress,
+    Completed,
+    #[serde(other)]
+    Unknown,
+}
+
+/// Conclusion of a completed job or step.
+#[derive(Debug, Deserialize, Clone, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub enum JobConclusion {
+    Success,
+    Failure,
+    Cancelled,
+    Skipped,
+    Neutral,
+    ActionRequired,
+    TimedOut,
+    #[serde(other)]
+    Unknown,
+}
+
 /// A single job within a workflow run.
 #[derive(Debug, Deserialize, Clone)]
 pub struct Job {
     pub id: u64,
-    /// URL like `https://api.github.com/repos/{owner}/{repo}/check-runs/{id}`.
-    /// The trailing segment is the check-run ID used to fetch annotations.
-    pub check_run_url: Option<String>,
     pub name: String,
-    pub status: String,
-    pub conclusion: Option<String>,
+    pub status: JobStatus,
+    pub conclusion: Option<JobConclusion>,
     pub started_at: Option<DateTime<Utc>>,
     pub completed_at: Option<DateTime<Utc>>,
-    pub steps: Option<Vec<Step>>,
-}
-
-impl Job {
-    /// Extract the check-run ID from `check_run_url`.
-    pub fn check_run_id(&self) -> Option<u64> {
-        self.check_run_url
-            .as_ref()
-            .and_then(|url| url.rsplit('/').next())
-            .and_then(|id| id.parse().ok())
-    }
+    /// URL like `https://api.github.com/repos/{owner}/{repo}/check-runs/{id}`.
+    pub check_run_url: String,
+    /// Steps are always present in the API response; empty while the job is queued.
+    #[serde(default)]
+    pub steps: Vec<Step>,
 }
 
 /// A single step within a job.
@@ -88,8 +109,13 @@ impl Job {
 pub struct Step {
     pub name: String,
     pub number: u32,
-    pub status: String,
-    pub conclusion: Option<String>,
+    pub status: JobStatus,
+    pub conclusion: Option<JobConclusion>,
+}
+
+/// Extract the check-run ID (trailing path segment) from a `check_run_url`.
+pub fn check_run_id_from_url(url: &str) -> Option<u64> {
+    url.rsplit('/').next().and_then(|id| id.parse().ok())
 }
 
 // -----------------------------------------------------------------------------
@@ -286,16 +312,18 @@ pub async fn get_latest_run(
         .context("No workflow runs found")
 }
 
-/// Fetch jobs for a workflow run.
+/// Fetch jobs for a workflow run via a raw GET.
 ///
-/// octocrab does not expose a jobs endpoint natively, so this uses a raw GET.
+/// We deserialize into our own `Job`/`JobStatus` types rather than octocrab's
+/// so that we can handle statuses like "waiting" that octocrab's enum is missing.
 pub async fn get_run_jobs(
     client: &Octocrab,
     owner: &str,
     repo: &str,
-    run_id: u64,
+    run_id: RunId,
 ) -> Result<Vec<Job>> {
     let route = format!("/repos/{owner}/{repo}/actions/runs/{run_id}/jobs");
+
     let response: JobsResponse = client
         .get(&route, None::<&()>)
         .await

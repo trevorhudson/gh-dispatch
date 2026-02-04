@@ -133,6 +133,16 @@ fn get_token() -> Result<String> {
 // Repository Info
 // -----------------------------------------------------------------------------
 
+/// Get the login of the currently authenticated user.
+pub async fn get_current_login(client: &Octocrab) -> Result<String> {
+    let user = client
+        .current()
+        .user()
+        .await
+        .context("Failed to fetch current user")?;
+    Ok(user.login)
+}
+
 /// Get the default branch for a repository.
 pub async fn get_default_branch(client: &Octocrab, owner: &str, repo: &str) -> Result<String> {
     let repository = client
@@ -245,14 +255,16 @@ pub async fn dispatch_workflow(
 
 /// Find the most recent workflow run after dispatch.
 ///
-/// Waits briefly then queries for the latest `workflow_dispatch` run on the branch.
-/// This is best-effort - in high-traffic repos, you may get someone else's run.
+/// Waits briefly then queries for the latest `workflow_dispatch` run on the
+/// branch, filtered to runs triggered by `actor` so we don't pick up someone
+/// else's concurrent run.
 pub async fn get_latest_run(
     client: &Octocrab,
     owner: &str,
     repo: &str,
     workflow: &str,
     git_ref: &str,
+    actor: &str,
 ) -> Result<Run> {
     // Brief delay to let GitHub register the run
     tokio::time::sleep(Duration::from_secs(POLL_DELAY)).await;
@@ -262,6 +274,7 @@ pub async fn get_latest_run(
         .list_runs(workflow)
         .branch(git_ref)
         .event("workflow_dispatch")
+        .actor(actor)
         .per_page(1)
         .send()
         .await

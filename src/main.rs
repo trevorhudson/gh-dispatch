@@ -50,7 +50,7 @@ async fn main() -> Result<()> {
         let workflow_names: Vec<&String> = app.keys().collect();
         Select::new("Select workflow:", workflow_names)
             .prompt()?
-            .clone()
+            .to_string()
     };
 
     let workflow_ref = &app[&selected_workflow];

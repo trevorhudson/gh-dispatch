@@ -12,19 +12,16 @@ use octocrab::models::workflows::Run;
 use std::collections::{HashMap, HashSet};
 use std::time::Duration;
 
-use crate::github::{get_annotations, get_run_jobs, Job};
+use octocrab::params::checks::CheckRunAnnotation;
+
+use crate::github::{Job, get_annotations, get_run_jobs};
 
 const POLL_INTERVAL: u64 = 5; // seconds
 const MAX_WAIT: u64 = 30 * 60; // 30 minutes
 const TICK_INTERVAL: u64 = 80; // milliseconds
 
 /// Watch a workflow run, rendering job/step progress until completion.
-pub async fn watch_run(
-    client: &Octocrab,
-    owner: &str,
-    repo: &str,
-    run_id: u64,
-) -> Result<Run> {
+pub async fn watch_run(client: &Octocrab, owner: &str, repo: &str, run_id: u64) -> Result<Run> {
     let multi = MultiProgress::new();
     // Per-job state: the progress bar and the last step number we already printed.
     let mut job_bars: HashMap<u64, (ProgressBar, u32)> = HashMap::new();
@@ -37,10 +34,7 @@ pub async fn watch_run(
             bail!("Timeout waiting for workflow completion (30 minutes)");
         }
 
-        let run = client
-            .workflows(owner, repo)
-            .get(run_id.into())
-            .await?;
+        let run = client.workflows(owner, repo).get(run_id.into()).await?;
 
         let jobs = get_run_jobs(client, owner, repo, run_id).await?;
 
@@ -84,8 +78,7 @@ pub async fn watch_run(
                 if let Some(check_run_id) = job.check_run_id()
                     && annotated.insert(job.id)
                 {
-                    let annotations =
-                        get_annotations(client, owner, repo, check_run_id).await?;
+                    let annotations = get_annotations(client, owner, repo, check_run_id).await?;
                     for ann in &annotations {
                         let (prefix, msg) = format_annotation(ann);
                         let _ = multi.println(format!("{prefix} {msg}"));
@@ -100,7 +93,7 @@ pub async fn watch_run(
             for (bar, _) in job_bars.values() {
                 bar.finish();
             }
-            println!();
+            let _ = multi.println("");
             return Ok(run);
         }
 
@@ -126,7 +119,11 @@ fn format_job_message(job: &Job) -> String {
             // Show the currently running step if available.
             job.steps
                 .as_ref()
-                .and_then(|steps| steps.iter().find(|s| s.status == "in_progress")).map_or_else(|| " (running)".dimmed().to_string(), |s| format!(" → {}", s.name.dimmed()))
+                .and_then(|steps| steps.iter().find(|s| s.status == "in_progress"))
+                .map_or_else(
+                    || " (running)".dimmed().to_string(),
+                    |s| format!(" → {}", s.name.dimmed()),
+                )
         }
         "completed" => format_duration(job),
         _ => String::new(),
@@ -139,7 +136,7 @@ fn format_job_message(job: &Job) -> String {
 ///
 /// Returns (colored prefix, message body).  The prefix reflects the annotation
 /// level: notice (blue →), warning (yellow !), failure (red ✗).
-fn format_annotation(ann: &octocrab::params::checks::CheckRunAnnotation) -> (String, String) {
+fn format_annotation(ann: &CheckRunAnnotation) -> (String, String) {
     let level = ann.annotation_level.as_deref().unwrap_or("notice");
     let prefix = match level {
         "failure" => "    ✗".red().bold().to_string(),
@@ -163,7 +160,9 @@ fn format_duration(job: &Job) -> String {
     match (&job.started_at, &job.completed_at) {
         (Some(start), Some(end)) => {
             let secs = (*end - *start).num_seconds().max(0);
-            format!(" ({}:{:02})", secs / 60, secs % 60).dimmed().to_string()
+            format!(" ({}:{:02})", secs / 60, secs % 60)
+                .dimmed()
+                .to_string()
         }
         _ => String::new(),
     }

@@ -10,10 +10,10 @@ use anyhow::{Context, Result, bail};
 use base64::{Engine as _, engine::general_purpose};
 use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
+use octocrab::models::workflows::Run;
 use octocrab::models::CheckRunId;
 use octocrab::params::checks::CheckRunAnnotation;
 use octocrab::Octocrab;
-use octocrab::models::workflows::Run;
 use serde::Deserialize;
 use serde_yaml::Value;
 use std::time::Duration;
@@ -52,7 +52,7 @@ pub struct WorkflowInput {
 // Job / Step Types
 // -----------------------------------------------------------------------------
 
-/// Response from GET /`repos/{owner}/{repo}/actions/runs/{run_id}/jobs`
+/// Response from `GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs`.
 #[derive(Debug, Deserialize)]
 pub struct JobsResponse {
     pub jobs: Vec<Job>,
@@ -293,7 +293,7 @@ pub async fn get_run_jobs(
 /// Fetch annotations for a check run.
 ///
 /// These are the messages emitted by `::notice::`, `::warning::`, and `::error::`
-/// workflow commands.  Returns an empty vec when the job has no `check_run_id`.
+/// workflow commands.
 pub async fn get_annotations(
     client: &Octocrab,
     owner: &str,

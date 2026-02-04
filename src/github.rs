@@ -8,6 +8,7 @@
 
 use anyhow::{Context, Result, bail};
 use base64::{Engine as _, engine::general_purpose};
+use chrono::{DateTime, Utc};
 use indexmap::IndexMap;
 use octocrab::Octocrab;
 use octocrab::models::workflows::Run;
@@ -16,8 +17,6 @@ use serde_yaml::Value;
 use std::time::Duration;
 
 const POLL_DELAY: u64 = 2;
-const POLL_INTERVAL: u64 = 10; // seconds
-const MAX_WAIT: u64 = 30 * 60; // 30 minutes
 
 // -----------------------------------------------------------------------------
 // Types
@@ -45,6 +44,37 @@ pub struct WorkflowInput {
     pub options: Option<Vec<String>>,
     /// Whether the input is required
     pub required: Option<bool>,
+}
+
+// -----------------------------------------------------------------------------
+// Job / Step Types
+// -----------------------------------------------------------------------------
+
+/// Response from GET /repos/{owner}/{repo}/actions/runs/{run_id}/jobs
+#[derive(Debug, Deserialize)]
+pub struct JobsResponse {
+    pub jobs: Vec<Job>,
+}
+
+/// A single job within a workflow run.
+#[derive(Debug, Deserialize, Clone)]
+pub struct Job {
+    pub id: u64,
+    pub name: String,
+    pub status: String,
+    pub conclusion: Option<String>,
+    pub started_at: Option<DateTime<Utc>>,
+    pub completed_at: Option<DateTime<Utc>>,
+    pub steps: Option<Vec<Step>>,
+}
+
+/// A single step within a job.
+#[derive(Debug, Deserialize, Clone)]
+pub struct Step {
+    pub name: String,
+    pub number: u32,
+    pub status: String,
+    pub conclusion: Option<String>,
 }
 
 // -----------------------------------------------------------------------------
@@ -228,35 +258,19 @@ pub async fn get_latest_run(
         .context("No workflow runs found")
 }
 
-/// Poll a workflow run until it completes.
+/// Fetch jobs for a workflow run.
 ///
-/// Checks run status every 10 seconds until it reaches "completed".
-/// Times out after 30 minutes to prevent infinite loops.
-pub async fn wait_for_completion(
+/// octocrab does not expose a jobs endpoint natively, so this uses a raw GET.
+pub async fn get_run_jobs(
     client: &Octocrab,
     owner: &str,
     repo: &str,
     run_id: u64,
-) -> Result<Run> {
-    let start = std::time::Instant::now();
-
-    loop {
-        if start.elapsed() > Duration::from_secs(MAX_WAIT) {
-            bail!("Timeout waiting for workflow completion (30 minutes)");
-        }
-
-        let run = client
-            .workflows(owner, repo)
-            .get(run_id.into())
-            .await
-            .context("Failed to get workflow run")?;
-
-        match run.status.as_str() {
-            "completed" => return Ok(run),
-            "queued" | "in_progress" | "waiting" | "pending" => {
-                tokio::time::sleep(Duration::from_secs(POLL_INTERVAL)).await;
-            }
-            status => bail!("Unexpected workflow status: {status}"),
-        }
-    }
+) -> Result<Vec<Job>> {
+    let route = format!("/repos/{owner}/{repo}/actions/runs/{run_id}/jobs");
+    let response: JobsResponse = client
+        .get(&route, None::<&()>)
+        .await
+        .context("Failed to fetch jobs")?;
+    Ok(response.jobs)
 }

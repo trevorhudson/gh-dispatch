@@ -3,6 +3,7 @@ mod config;
 mod github;
 mod prompts;
 mod ui;
+mod watcher;
 
 use anyhow::{Result, bail};
 use clap::Parser;
@@ -11,11 +12,11 @@ use colored::Colorize;
 use config::load_config;
 use github::{
     create_client, dispatch_workflow, get_default_branch, get_latest_run, get_workflow_schema,
-    wait_for_completion,
 };
 use inquire::{Confirm, Select};
 use prompts::collect_workflow_inputs;
-use ui::{create_spinner, info, start_timer, success, warning};
+use ui::{create_spinner, info, success, warning};
+use watcher::watch_run;
 
 #[tokio::main]
 async fn main() -> Result<()> {
@@ -57,10 +58,13 @@ async fn main() -> Result<()> {
     let owner = &workflow_ref.owner;
     let repo = &workflow_ref.repo;
 
-    // Fetch workflow schema and default branch
+    // Fetch workflow schema; resolve git ref from config or default branch
     let spinner = create_spinner("Fetching workflow...");
     let schema = get_workflow_schema(&client, owner, repo, &workflow_ref.workflow).await?;
-    let git_ref = get_default_branch(&client, owner, repo).await?;
+    let git_ref = match &workflow_ref.git_ref {
+        Some(r) => r.clone(),
+        None => get_default_branch(&client, owner, repo).await?,
+    };
     spinner.finish_and_clear();
     info(&format!(
         "Workflow: '{}' ({})",
@@ -111,12 +115,9 @@ async fn main() -> Result<()> {
 
         info(&format!("Run #{}", run.run_number.to_string().cyan()));
         println!("  {}", run.html_url.to_string().underline().blue());
+        println!();
 
-        let spinner = create_spinner("Waiting for completion...");
-        let timer = start_timer(&spinner, "Waiting for completion");
-        let completed = wait_for_completion(&client, owner, repo, run.id.into_inner()).await?;
-        timer.abort();
-        spinner.finish_and_clear();
+        let completed = watch_run(&client, owner, repo, run.id.into_inner()).await?;
 
         let conclusion = completed.conclusion.as_deref().unwrap_or("unknown");
         match conclusion {

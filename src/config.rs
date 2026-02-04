@@ -6,7 +6,7 @@
 //!
 //! ```toml
 //! [apps.my-app]
-//! build = { repo = "owner/repo", workflow = "build.yml", inputs = { app = "my-app" } }
+//! build = { repo = "owner/repo", workflow = "build.yml", ref = "develop", inputs = { app = "my-app" } }
 //! deploy = { repo = "owner/repo", workflow = "deploy.yml" }
 //! test = { repo = "owner/repo", workflow = "test.yml" }
 //! ```
@@ -40,6 +40,8 @@ pub struct WorkflowRef {
     pub repo: String,
     /// Workflow filename (e.g., "build.yml")
     pub workflow: String,
+    /// Git ref to dispatch on (branch or tag). Defaults to the repo's default branch.
+    pub git_ref: Option<String>,
     /// Optional pre-filled input values (skip prompts for these)
     pub inputs: Option<IndexMap<String, String>>,
 }
@@ -49,6 +51,8 @@ pub struct WorkflowRef {
 struct WorkflowRefRaw {
     repo: String,
     workflow: String,
+    #[serde(rename = "ref", default)]
+    git_ref: Option<String>,
     #[serde(default)]
     inputs: Option<IndexMap<String, String>>,
 }
@@ -67,6 +71,7 @@ impl TryFrom<WorkflowRefRaw> for WorkflowRef {
             owner,
             repo,
             workflow: raw.workflow,
+            git_ref: raw.git_ref,
             inputs: raw.inputs,
         })
     }
